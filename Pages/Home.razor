@@ -6,17 +6,51 @@
 <PageTitle>Frontier Command</PageTitle>
 
 <div class="game-container">
-    <canvas id="gameCanvas" @ref="canvasRef"></canvas>
-    <div class="hud">
-        <div class="hud-readout">
-            <div class="energy">Energy: @energy.ToString("0") / 100</div>
-            <div class="score">Score: @score | Command: @command</div>
-            <div class="status">@statusMessage</div>
-        </div>
-        <div class="controls-hint">
-            Arrows/WASD: Rotate/Thrust | Space: Fire | S: Shields | Esc: Capsule
+    <div class="playfield">
+        <canvas id="gameCanvas" @ref="canvasRef"></canvas>
+        <div class="hud">
+            <div class="controls-hint">
+                Arrows/WASD: Rotate/Thrust | Space: Fire | S: Shields | Esc: Capsule
+            </div>
         </div>
     </div>
+    <aside class="instruments">
+        <div class="instrument">
+            <div class="instrument-label">Long range</div>
+            <div class="scanner-plot @(shieldsOn ? "offline" : "")">
+                @if (shieldsOn)
+                {
+                    <div class="scanner-static">Scan off</div>
+                }
+                else
+                {
+                    @foreach (var e in enemies.ToArray())
+                    {
+                        <span class="blip @BlipClass(e)" style="@BlipStyle(e)"></span>
+                    }
+                }
+                <span class="scanner-own"></span>
+            </div>
+        </div>
+        <div class="instrument">
+            <div class="instrument-label">Energy banks</div>
+            <div class="banks @EnergyTone">
+                @for (var bank = 0; bank < 4; bank++)
+                {
+                    <div class="bank">
+                        <div class="bank-track">
+                            <div class="bank-fill" style="@BankStyle(bank)"></div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+        <div class="instrument-readout">
+            <div class="score">Score @score · Command @command</div>
+            <div class="shield-state">@(shieldsOn ? "Shields up" : "Shields down")</div>
+            <div class="status">@statusMessage</div>
+        </div>
+    </aside>
 </div>
 
 @code {
@@ -324,6 +358,38 @@
     {
         if (!disposed)
             StateHasChanged();
+    }
+
+    private const double ScannerRange = 1000;
+
+    private string EnergyTone => energy < 30 ? "low" : energy < 60 ? "mid" : "high";
+
+    private string BankStyle(int bank)
+    {
+        double fill = Math.Clamp((energy - bank * 25) / 25.0, 0, 1);
+        return FormattableString.Invariant($"height:{fill * 100:0.0}%");
+    }
+
+    private string BlipClass(Enemy e) => e.Cloaked ? "cloaked" : e.IsLarge ? "large" : "small";
+
+    private string BlipStyle(Enemy e)
+    {
+        double view = -Math.PI / 2 - playerRotation;
+        double cosV = Math.Cos(view);
+        double sinV = Math.Sin(view);
+        double sx = e.X * cosV - e.Y * sinV;
+        double sy = e.X * sinV + e.Y * cosV;
+        double nx = sx / ScannerRange;
+        double ny = sy / ScannerRange;
+        double mag = Math.Sqrt(nx * nx + ny * ny);
+        if (mag > 1)
+        {
+            nx /= mag;
+            ny /= mag;
+        }
+        double left = 50 + nx * 44;
+        double top = 50 + ny * 44;
+        return FormattableString.Invariant($"left:{left:0.0}%;top:{top:0.0}%");
     }
 
     private class Enemy

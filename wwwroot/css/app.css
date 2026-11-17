@@ -1,5 +1,7 @@
 .game-container {
     position: relative;
+    display: flex;
+    flex-direction: column;
     width: 100%;
     height: calc(100vh - 7rem);
     background: #000;
@@ -19,35 +21,18 @@
     background: #000011;
 }
 
+.playfield {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+}
+
 .hud {
     position: absolute;
     inset: 0;
     pointer-events: none;
     font-family: monospace;
     text-shadow: 0 0 4px #000;
-}
-
-.hud-readout {
-    position: absolute;
-    top: 12px;
-    left: 12px;
-    right: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    line-height: 1.3;
-}
-
-.hud-readout .energy {
-    color: #0f0;
-}
-
-.hud-readout .score {
-    color: #fff;
-}
-
-.hud-readout .status {
-    color: #ff0;
 }
 
 .controls-hint {
@@ -58,4 +43,185 @@
     font-size: 12px;
     line-height: 1.3;
     color: #aaa;
+}
+
+.instruments {
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
+    align-items: stretch;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    background: #02060c;
+    color: #b7f7b7;
+    font-family: monospace;
+    border-top: 1px solid #14331c;
+}
+
+.instrument-label {
+    margin-bottom: 4px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #7dffa6;
+}
+
+.scanner-plot {
+    position: relative;
+    width: 108px;
+    height: 108px;
+    border: 1px solid #1f8f45;
+    border-radius: 50%;
+    background:
+        linear-gradient(#14331c, #14331c) center/1px 100% no-repeat,
+        linear-gradient(#14331c, #14331c) center/100% 1px no-repeat,
+        radial-gradient(circle, transparent 58%, #14331c 59%, transparent 60%),
+        #010308;
+    overflow: hidden;
+}
+
+.scanner-own {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 0;
+    height: 0;
+    transform: translate(-50%, -70%);
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-bottom: 9px solid #f4f7ff;
+}
+
+.blip {
+    position: absolute;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #ffaa44;
+    transform: translate(-50%, -50%);
+}
+
+.blip.large {
+    width: 8px;
+    height: 8px;
+    background: #ff4444;
+}
+
+.blip.cloaked {
+    background: transparent;
+    border: 1px solid #9ecbff;
+    width: 7px;
+    height: 7px;
+}
+
+.scanner-plot.offline {
+    background: repeating-linear-gradient(
+        180deg,
+        #010308,
+        #010308 3px,
+        rgba(40, 90, 50, 0.55) 3px,
+        rgba(40, 90, 50, 0.55) 4px
+    );
+}
+
+.scanner-static {
+    position: absolute;
+    inset: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 10px;
+    line-height: 1.3;
+    color: #d7ff7a;
+}
+
+.banks {
+    display: flex;
+    gap: 6px;
+    height: 108px;
+    align-items: stretch;
+}
+
+.bank {
+    display: flex;
+    height: 100%;
+}
+
+.bank-track {
+    position: relative;
+    width: 18px;
+    height: 100%;
+    border: 1px solid #1f8f45;
+    background: #010308;
+    overflow: hidden;
+}
+
+.bank-fill {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #37e26a;
+}
+
+.banks.mid .bank-fill {
+    background: #e2c037;
+}
+
+.banks.low .bank-fill {
+    background: #e24b37;
+}
+
+.instrument-readout {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    min-width: 0;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.instrument-readout .score {
+    color: #fff;
+}
+
+.instrument-readout .shield-state {
+    color: #8ecbff;
+}
+
+.instrument-readout .status {
+    color: #ff0;
+}
+
+@media (min-width: 641px) {
+    .game-container {
+        flex-direction: row;
+    }
+
+    .instruments {
+        width: 188px;
+        flex-direction: column;
+        border-top: 0;
+        border-left: 1px solid #14331c;
+    }
+
+    .scanner-plot {
+        width: 168px;
+        height: 168px;
+    }
+
+    .banks {
+        height: 88px;
+    }
+
+    .bank {
+        flex: 1;
+    }
+
+    .bank-track {
+        flex: 1;
+        width: auto;
+    }
 }

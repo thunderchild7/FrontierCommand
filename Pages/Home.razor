@@ -26,7 +26,12 @@
                 {
                     @foreach (var e in enemies.ToArray())
                     {
-                        <span class="blip @BlipClass(e)" style="@BlipStyle(e)"></span>
+                        <span class="blip @BlipClass(e)" style="@BlipStyle(e.X, e.Y)"></span>
+                    }
+                    @foreach (var shot in projectiles.ToArray())
+                    {
+                        if (!shot.Hostile) continue;
+                        <span class="blip shot" style="@BlipStyle(shot.X, shot.Y)"></span>
                     }
                 }
                 <span class="scanner-own"></span>
@@ -109,7 +114,8 @@
                         X = Math.Cos(playerRotation) * 20,
                         Y = Math.Sin(playerRotation) * 20,
                         Vx = Math.Cos(playerRotation) * speed,
-                        Vy = Math.Sin(playerRotation) * speed
+                        Vy = Math.Sin(playerRotation) * speed,
+                        Hostile = false
                     });
                 }
                 break;
@@ -219,6 +225,7 @@
             e.X += worldVx * dt;
             e.Y += worldVy * dt;
             e.Update(dt, rng);
+            TryEnemyFire(e, dt);
         }
 
         foreach (var p in projectiles)
@@ -230,6 +237,17 @@
         projectiles.RemoveAll(p => p.Life <= 0 || Distance(p.X, p.Y) > 800);
 
         // Collisions
+        foreach (var p in projectiles.ToList())
+        {
+            if (!p.Hostile) continue;
+            if (Distance(p.X, p.Y) < 18)
+            {
+                energy = Math.Max(0, energy - (shieldsOn ? p.Damage * 0.35 : p.Damage));
+                projectiles.Remove(p);
+                statusMessage = shieldsOn ? "Shield absorbed torpedo" : "Torpedo hit!";
+            }
+        }
+
         foreach (var e in enemies.ToList())
         {
             double dist = Distance(e.X, e.Y);
@@ -241,6 +259,7 @@
             }
             foreach (var p in projectiles.ToList())
             {
+                if (p.Hostile) continue;
                 if (Math.Sqrt((e.X - p.X)*(e.X - p.X) + (e.Y - p.Y)*(e.Y - p.Y)) < e.Radius + 5)
                 {
                     e.Health -= 30;
@@ -308,7 +327,7 @@
         {
             double px = cx + p.X * cosV - p.Y * sinV;
             double py = cy + p.X * sinV + p.Y * cosV;
-            await JS.InvokeVoidAsync("gameInterop.drawCircle", px, py, 3, "#00ffff");
+            await JS.InvokeVoidAsync("gameInterop.drawCircle", px, py, p.Hostile ? 4 : 3, p.Hostile ? "#ff4422" : "#00ffff");
         }
 
         // Player ship stays nose-up. The world turns around it.
@@ -340,8 +359,32 @@
             IsLarge = large,
             Radius = large ? 18 : 10,
             Health = large ? 60 : 30,
-            Cloaked = large && rng.NextDouble() < 0.5
+            Cloaked = large && rng.NextDouble() < 0.5,
+            FireCooldown = 0.5 + rng.NextDouble() * 1.2
         });
+    }
+
+    private void TryEnemyFire(Enemy e, double dt)
+    {
+        e.FireCooldown -= dt;
+        double dist = Distance(e.X, e.Y);
+        if (e.FireCooldown > 0 || dist < 80 || dist > 760) return;
+
+        double aimX = -e.X / dist;
+        double aimY = -e.Y / dist;
+        double speed = e.IsLarge ? 160 : 200;
+        double nose = e.Radius + 10;
+        projectiles.Add(new Projectile
+        {
+            X = e.X + aimX * nose,
+            Y = e.Y + aimY * nose,
+            Vx = aimX * speed,
+            Vy = aimY * speed,
+            Hostile = true,
+            Damage = e.IsLarge ? 16 : 10,
+            Life = 4
+        });
+        e.FireCooldown = e.IsLarge ? 1.4 : 2.1;
     }
 
     private double Distance(double x, double y) => Math.Sqrt(x * x + y * y);
@@ -372,13 +415,13 @@
 
     private string BlipClass(Enemy e) => e.Cloaked ? "cloaked" : e.IsLarge ? "large" : "small";
 
-    private string BlipStyle(Enemy e)
+    private string BlipStyle(double worldX, double worldY)
     {
         double view = -Math.PI / 2 - playerRotation;
         double cosV = Math.Cos(view);
         double sinV = Math.Sin(view);
-        double sx = e.X * cosV - e.Y * sinV;
-        double sy = e.X * sinV + e.Y * cosV;
+        double sx = worldX * cosV - worldY * sinV;
+        double sy = worldX * sinV + worldY * cosV;
         double nx = sx / ScannerRange;
         double ny = sy / ScannerRange;
         double mag = Math.Sqrt(nx * nx + ny * ny);
@@ -399,6 +442,7 @@
         public int Health;
         public bool IsLarge;
         public bool Cloaked;
+        public double FireCooldown;
         public void Update(double dt, Random r)
         {
             // Simple AI: drift toward center a bit
@@ -414,6 +458,8 @@
     private class Projectile
     {
         public double X, Y, Vx, Vy, Life = 2.0;
+        public bool Hostile;
+        public double Damage = 10;
     }
 
     private class Star { public double X, Y; }

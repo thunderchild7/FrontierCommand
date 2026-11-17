@@ -108,6 +108,12 @@
     height: 7px;
 }
 
+.blip.shot {
+    width: 3px;
+    height: 3px;
+    background: #ff4422;
+}
+
 .scanner-plot.offline {
     background: repeating-linear-gradient(
         180deg,

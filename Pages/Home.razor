@@ -248,30 +248,37 @@
             await JS.InvokeVoidAsync("gameInterop.drawCircle", sx, sy, 1, "#ffffff");
         }
 
-        // Enemies
+        // View rotation keeps the player's nose pointing up. Heading 0 is world +X.
+        double view = -Math.PI / 2 - playerRotation;
+        double cosV = Math.Cos(view);
+        double sinV = Math.Sin(view);
+
+        // Enemies face the direction they fly, which is toward the player.
         foreach (var e in enemies)
         {
-            double ex = cx + e.X * Math.Cos(playerRotation) - e.Y * Math.Sin(playerRotation);
-            double ey = cy + e.X * Math.Sin(playerRotation) + e.Y * Math.Cos(playerRotation);
+            double ex = cx + e.X * cosV - e.Y * sinV;
+            double ey = cy + e.X * sinV + e.Y * cosV;
+            double dist = Math.Max(Distance(e.X, e.Y), 0.001);
+            double hwx = -e.X / dist;
+            double hwy = -e.Y / dist;
+            double hsx = hwx * cosV - hwy * sinV;
+            double hsy = hwx * sinV + hwy * cosV;
+            double face = Math.Atan2(hsy, hsx);
             string color = e.IsLarge ? "#ff4444" : "#ffaa44";
-            if (e.Cloaked) color = "#444444";
-            await JS.InvokeVoidAsync("gameInterop.drawCircle", ex, ey, e.Radius, color);
+            if (e.Cloaked) color = "#7d8794";
+            await JS.InvokeVoidAsync("gameInterop.drawShip", ex, ey, face, e.Radius, color, false, e.Cloaked);
         }
 
         // Projectiles
         foreach (var p in projectiles)
         {
-            double px = cx + p.X * Math.Cos(playerRotation) - p.Y * Math.Sin(playerRotation);
-            double py = cy + p.X * Math.Sin(playerRotation) + p.Y * Math.Cos(playerRotation);
+            double px = cx + p.X * cosV - p.Y * sinV;
+            double py = cy + p.X * sinV + p.Y * cosV;
             await JS.InvokeVoidAsync("gameInterop.drawCircle", px, py, 3, "#00ffff");
         }
 
-        // Player ship (fixed center, simple triangle)
-        await JS.InvokeVoidAsync("gameInterop.drawCircle", cx, cy, 12, shieldsOn ? "#4488ff" : "#ffffff");
-        // Direction indicator
-        double tipX = cx + Math.Cos(playerRotation) * 20;
-        double tipY = cy + Math.Sin(playerRotation) * 20;
-        await JS.InvokeVoidAsync("gameInterop.drawLine", cx, cy, tipX, tipY, "#00ff00", 2);
+        // Player ship stays nose-up. The world turns around it.
+        await JS.InvokeVoidAsync("gameInterop.drawShip", cx, cy, -Math.PI / 2, 14, "#f4f7ff", shieldsOn, false);
     }
 
     private void GenerateStars()

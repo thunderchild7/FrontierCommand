@@ -64,6 +64,58 @@ window.gameInterop = {
         this.ctx.fill();
     },
 
+    // angle 0 points right. Negative half-pi points up, which is the player's fixed nose.
+    drawShip: function (x, y, angle, radius, color, shielded, outlineOnly) {
+        if (!this.ctx) return;
+        const ctx = this.ctx;
+        const nose = radius;
+        const wing = radius * 0.62;
+        const back = radius * 0.78;
+        const notch = radius * 0.22;
+        const local = [
+            [nose, 0],
+            [-back, wing],
+            [-notch, 0],
+            [-back, -wing]
+        ];
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        const point = (lx, ly) => [x + lx * cos - ly * sin, y + lx * sin + ly * cos];
+
+        ctx.beginPath();
+        local.forEach(([lx, ly], i) => {
+            const [px, py] = point(lx, ly);
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+        });
+        ctx.closePath();
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = 1.5;
+        if (outlineOnly) {
+            ctx.strokeStyle = color;
+            ctx.stroke();
+        } else {
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.stroke();
+        }
+
+        const [ex, ey] = point(-back - radius * 0.18, 0);
+        ctx.beginPath();
+        ctx.arc(ex, ey, Math.max(1.5, radius * 0.16), 0, Math.PI * 2);
+        ctx.fillStyle = outlineOnly ? '#665522' : '#ffaa22';
+        ctx.fill();
+
+        if (shielded) {
+            ctx.beginPath();
+            ctx.arc(x, y, radius + 8, 0, Math.PI * 2);
+            ctx.strokeStyle = '#4488ff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+    },
+
     drawLine: function (x1, y1, x2, y2, color, width = 1) {
         if (!this.ctx) return;
         this.ctx.beginPath();

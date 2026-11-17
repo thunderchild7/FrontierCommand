@@ -3,15 +3,9 @@
     display: flex;
     flex-direction: column;
     width: 100%;
-    height: calc(100vh - 7rem);
+    height: 100vh;
     background: #000;
     overflow: hidden;
-}
-
-@media (min-width: 641px) {
-    .game-container {
-        height: calc(100vh - 3.5rem);
-    }
 }
 
 #gameCanvas {

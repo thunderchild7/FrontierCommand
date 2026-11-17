@@ -10,7 +10,7 @@
         <canvas id="gameCanvas" @ref="canvasRef"></canvas>
         <div class="hud">
             <div class="controls-hint">
-                Arrows/WASD: Rotate/Thrust | Space: Fire | S: Shields | Esc: Capsule
+                Arrows/WASD: Rotate/Thrust | Space: Fire | S: Shields | F: Port capsule | G: Starboard capsule
             </div>
         </div>
     </div>
@@ -33,8 +33,12 @@
                         if (!shot.Hostile) continue;
                         <span class="blip shot" style="@BlipStyle(shot.X, shot.Y)"></span>
                     }
+                    @if (capsuleInFlight)
+                    {
+                        <span class="blip capsule" style="@BlipStyle(capsuleX, capsuleY)"></span>
+                    }
                 }
-                <span class="scanner-own"></span>
+                <span class="scanner-own" style="@OwnShipStyle"></span>
             </div>
         </div>
         <div class="instrument">
@@ -51,7 +55,7 @@
             </div>
         </div>
         <div class="instrument-readout">
-            <div class="score">Score @score · Command @command</div>
+            <div class="score">Score @score · Cmd @command · @ShipName</div>
             <div class="shield-state">@(shieldsOn ? "Shields up" : "Shields down")</div>
             <div class="status">@statusMessage</div>
         </div>
@@ -80,6 +84,19 @@
     private double lastTimestamp = 0;
     private bool disposed;
     private bool keysDown = false; // simplified input
+    private bool capsuleInFlight;
+    private double capsuleX, capsuleY, capsuleVx, capsuleVy;
+    private double viewWidth, viewHeight;
+    private const double PlayerRadius = 14;
+    private const double CapsuleRadius = 7;
+    private const double CapsuleSpeed = 170;
+    private static readonly string[] ShipColors = { "#f4f7ff", "#7ee0ff", "#ffd27a", "#b6ff9a", "#e0b0ff" };
+    private static readonly string[] ShipNames = { "Wedge", "Dart", "Cruiser", "Fork", "Ram" };
+    private int ShipDesign => (Math.Max(command, 1) - 1) % ShipColors.Length;
+    private string PlayerColor => ShipColors[ShipDesign];
+    private string ShipName => ShipNames[ShipDesign];
+    private int PromotionThreshold => 36 + command * 12;
+    private string OwnShipStyle => FormattableString.Invariant($"border-bottom-color:{PlayerColor}");
 
     // Input state (updated via keyboard events - we'll add JS listener)
     private HashSet<string> pressedKeys = new();
@@ -105,7 +122,7 @@
         {
             case " ":
             case "spacebar":
-                if (energy > 5)
+                if (!capsuleInFlight && isRunning && energy > 5)
                 {
                     energy -= 5;
                     double speed = 300;
@@ -120,29 +137,16 @@
                 }
                 break;
             case "s":
+                if (!isRunning) break;
                 shieldsOn = !shieldsOn;
-                statusMessage = shieldsOn ? "Shields UP" : "Shields DOWN";
+                if (!capsuleInFlight)
+                    statusMessage = shieldsOn ? "Shields UP" : "Shields DOWN";
                 break;
-            case "escape":
-            case "c":
-                statusMessage = "Escape capsule launched! Score evaluated...";
-                isRunning = false;
-                // Simple promotion
-                if (score > 40 + command * 10)
-                {
-                    command++;
-                    score = 0;
-                    energy = 100;
-                    enemies.Clear();
-                    projectiles.Clear();
-                    SpawnInitialEnemies();
-                    statusMessage = $"Promoted to Command {command}! New ship.";
-                    isRunning = true;
-                }
-                else
-                {
-                    statusMessage = "Starfleet disappointed. Mission failed.";
-                }
+            case "f":
+                LaunchCapsule(-1);
+                break;
+            case "g":
+                LaunchCapsule(1);
                 break;
             case "r":
                 Restart();
@@ -159,9 +163,38 @@
         projectiles.Clear();
         worldVx = worldVy = 0;
         playerRotation = 0;
+        capsuleInFlight = false;
         isRunning = true;
+        shieldsOn = false;
         SpawnInitialEnemies();
         statusMessage = "New command. Good luck.";
+    }
+
+    // side -1 is port (screen left) and +1 is starboard (screen right).
+    private void LaunchCapsule(int side)
+    {
+        if (capsuleInFlight) return;
+        if (energy <= 0)
+        {
+            statusMessage = "Too late. The ship is lost. Press R to restart.";
+            return;
+        }
+        if (!isRunning)
+        {
+            statusMessage = "The mission is already over. Press R to restart.";
+            return;
+        }
+
+        double view = -Math.PI / 2 - playerRotation;
+        double dirX = side * Math.Cos(view);
+        double dirY = -side * Math.Sin(view);
+        double launch = PlayerRadius + CapsuleRadius + 8;
+        capsuleX = dirX * launch;
+        capsuleY = dirY * launch;
+        capsuleVx = dirX * CapsuleSpeed;
+        capsuleVy = dirY * CapsuleSpeed;
+        capsuleInFlight = true;
+        statusMessage = side < 0 ? "Port capsule launched." : "Starboard capsule launched.";
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -189,37 +222,14 @@
 
     private void Update(double dt)
     {
-        // Continuous controls
-        double rotSpeed = 2.5;
-        double thrust = 120;
-        if (pressedKeys.Contains("arrowleft") || pressedKeys.Contains("a"))
-            playerRotation -= rotSpeed * dt;
-        if (pressedKeys.Contains("arrowright") || pressedKeys.Contains("d"))
-            playerRotation += rotSpeed * dt;
-        if (pressedKeys.Contains("arrowup") || pressedKeys.Contains("w"))
+        if (!capsuleInFlight)
+            PilotShip(dt);
+        else
         {
-            worldVx -= Math.Cos(playerRotation) * thrust * dt;
-            worldVy -= Math.Sin(playerRotation) * thrust * dt;
-            energy = Math.Max(0, energy - 4 * dt);
-        }
-        if (pressedKeys.Contains("arrowdown"))
-        {
-            // brake
-            worldVx *= (1 - 2.0 * dt);
-            worldVy *= (1 - 2.0 * dt);
-            energy = Math.Max(0, energy - 3 * dt);
+            worldVx *= (1 - 0.3 * dt);
+            worldVy *= (1 - 0.3 * dt);
         }
 
-        // Dampen a little
-        worldVx *= (1 - 0.3 * dt);
-        worldVy *= (1 - 0.3 * dt);
-
-        // Energy regen
-        double regen = shieldsOn ? 8 : 16;
-        if (Math.Abs(worldVx) < 5 && Math.Abs(worldVy) < 5) regen *= 1.8;
-        energy = Math.Min(100, energy + regen * dt);
-
-        // Move relative
         foreach (var e in enemies)
         {
             e.X += worldVx * dt;
@@ -236,31 +246,33 @@
         }
         projectiles.RemoveAll(p => p.Life <= 0 || Distance(p.X, p.Y) > 800);
 
-        // Collisions
-        foreach (var p in projectiles.ToList())
+        if (!capsuleInFlight)
         {
-            if (!p.Hostile) continue;
-            if (Distance(p.X, p.Y) < 18)
+            foreach (var p in projectiles.ToList())
             {
-                energy = Math.Max(0, energy - (shieldsOn ? p.Damage * 0.35 : p.Damage));
-                projectiles.Remove(p);
-                statusMessage = shieldsOn ? "Shield absorbed torpedo" : "Torpedo hit!";
+                if (!p.Hostile) continue;
+                if (Distance(p.X, p.Y) < 18)
+                {
+                    energy = Math.Max(0, energy - (shieldsOn ? p.Damage * 0.35 : p.Damage));
+                    projectiles.Remove(p);
+                    statusMessage = shieldsOn ? "Shield absorbed torpedo" : "Torpedo hit!";
+                }
             }
         }
 
         foreach (var e in enemies.ToList())
         {
-            double dist = Distance(e.X, e.Y);
-            if (dist < e.Radius + 14)
+            if (!capsuleInFlight && Distance(e.X, e.Y) < e.Radius + PlayerRadius)
             {
                 energy -= shieldsOn ? 4 : 12;
                 enemies.Remove(e);
                 statusMessage = shieldsOn ? "Shield absorbed impact" : "Hull hit!";
+                continue;
             }
             foreach (var p in projectiles.ToList())
             {
                 if (p.Hostile) continue;
-                if (Math.Sqrt((e.X - p.X)*(e.X - p.X) + (e.Y - p.Y)*(e.Y - p.Y)) < e.Radius + 5)
+                if (Math.Sqrt((e.X - p.X) * (e.X - p.X) + (e.Y - p.Y) * (e.Y - p.Y)) < e.Radius + 5)
                 {
                     e.Health -= 30;
                     projectiles.Remove(p);
@@ -274,20 +286,146 @@
             }
         }
 
-        if (enemies.Count < 1 + command && rng.NextDouble() < dt * 0.35)
+        if (capsuleInFlight)
+        {
+            UpdateCapsule(dt);
+            if (!isRunning || !capsuleInFlight) return;
+        }
+        else if (enemies.Count < 1 + command && rng.NextDouble() < dt * 0.35)
+        {
             SpawnEnemy();
+        }
 
-        if (energy <= 0)
+        if (!capsuleInFlight && energy <= 0)
         {
             statusMessage = "ENERGY DEPLETED - Ship lost. Press R to restart.";
             isRunning = false;
         }
     }
 
+    private void PilotShip(double dt)
+    {
+        double rotSpeed = 2.5;
+        double thrust = 120;
+        if (pressedKeys.Contains("arrowleft") || pressedKeys.Contains("a"))
+            playerRotation -= rotSpeed * dt;
+        if (pressedKeys.Contains("arrowright") || pressedKeys.Contains("d"))
+            playerRotation += rotSpeed * dt;
+        if (pressedKeys.Contains("arrowup") || pressedKeys.Contains("w"))
+        {
+            worldVx -= Math.Cos(playerRotation) * thrust * dt;
+            worldVy -= Math.Sin(playerRotation) * thrust * dt;
+            energy = Math.Max(0, energy - 4 * dt);
+        }
+        if (pressedKeys.Contains("arrowdown"))
+        {
+            worldVx *= (1 - 2.0 * dt);
+            worldVy *= (1 - 2.0 * dt);
+            energy = Math.Max(0, energy - 3 * dt);
+        }
+
+        worldVx *= (1 - 0.3 * dt);
+        worldVy *= (1 - 0.3 * dt);
+
+        double regen = shieldsOn ? 8 : 16;
+        if (Math.Abs(worldVx) < 5 && Math.Abs(worldVy) < 5) regen *= 1.8;
+        energy = Math.Min(100, energy + regen * dt);
+    }
+
+    private void UpdateCapsule(double dt)
+    {
+        capsuleX += (capsuleVx + worldVx) * dt;
+        capsuleY += (capsuleVy + worldVy) * dt;
+
+        if (viewWidth >= 10 && !CapsuleOnScreen())
+        {
+            ReviewMission();
+            return;
+        }
+
+        foreach (var e in enemies)
+        {
+            double dx = e.X - capsuleX;
+            double dy = e.Y - capsuleY;
+            if (dx * dx + dy * dy < (e.Radius + CapsuleRadius) * (e.Radius + CapsuleRadius))
+            {
+                FailCapsule("Capsule hit an enemy ship. Press R to restart.");
+                return;
+            }
+        }
+
+        foreach (var p in projectiles)
+        {
+            if (!p.Hostile) continue;
+            double dx = p.X - capsuleX;
+            double dy = p.Y - capsuleY;
+            if (dx * dx + dy * dy < (CapsuleRadius + 4) * (CapsuleRadius + 4))
+            {
+                FailCapsule("Capsule destroyed before leaving the playfield. Press R to restart.");
+                return;
+            }
+        }
+    }
+
+    private bool CapsuleOnScreen()
+    {
+        double view = -Math.PI / 2 - playerRotation;
+        double cosV = Math.Cos(view);
+        double sinV = Math.Sin(view);
+        double sx = viewWidth / 2 + capsuleX * cosV - capsuleY * sinV;
+        double sy = viewHeight / 2 + capsuleX * sinV + capsuleY * cosV;
+        const double margin = 8;
+        return sx >= -margin && sy >= -margin && sx <= viewWidth + margin && sy <= viewHeight + margin;
+    }
+
+    private void FailCapsule(string message)
+    {
+        capsuleInFlight = false;
+        isRunning = false;
+        statusMessage = message;
+    }
+
+    private void ReviewMission()
+    {
+        capsuleInFlight = false;
+        int threshold = PromotionThreshold;
+        string rating = AdmiralRating(score, threshold);
+        if (score >= threshold)
+        {
+            command++;
+            score = 0;
+            energy = 100;
+            shieldsOn = false;
+            worldVx = 0;
+            worldVy = 0;
+            enemies.Clear();
+            projectiles.Clear();
+            SpawnInitialEnemies();
+            statusMessage = $"Admiral is {rating}. Promoted to Command {command}. New ship: {ShipName}.";
+        }
+        else
+        {
+            isRunning = false;
+            statusMessage = $"Admiral is {rating}. Score {score} needs {threshold}. Press R to restart.";
+        }
+    }
+
+    private static string AdmiralRating(int score, int threshold)
+    {
+        double ratio = threshold <= 0 ? 1 : score / (double)threshold;
+        if (ratio >= 1.5) return "delighted";
+        if (ratio >= 1.0) return "pleased";
+        if (ratio >= 0.5) return "satisfied";
+        if (score > 0) return "disappointed";
+        return "furious";
+    }
+
     private async Task Render()
     {
         await JS.InvokeVoidAsync("gameInterop.clear");
         var size = await JS.InvokeAsync<Size>("gameInterop.getSize");
+        viewWidth = size.Width;
+        viewHeight = size.Height;
         double cx = size.Width / 2;
         double cy = size.Height / 2;
 
@@ -330,8 +468,19 @@
             await JS.InvokeVoidAsync("gameInterop.drawCircle", px, py, p.Hostile ? 4 : 3, p.Hostile ? "#ff4422" : "#00ffff");
         }
 
-        // Player ship stays nose-up. The world turns around it.
-        await JS.InvokeVoidAsync("gameInterop.drawShip", cx, cy, -Math.PI / 2, 14, "#f4f7ff", shieldsOn, false);
+        if (capsuleInFlight)
+        {
+            double px = cx + capsuleX * cosV - capsuleY * sinV;
+            double py = cy + capsuleX * sinV + capsuleY * cosV;
+            double tvx = capsuleVx + worldVx;
+            double tvy = capsuleVy + worldVy;
+            double hsx = tvx * cosV - tvy * sinV;
+            double hsy = tvx * sinV + tvy * cosV;
+            await JS.InvokeVoidAsync("gameInterop.drawCapsule", px, py, Math.Atan2(hsy, hsx));
+        }
+
+        // Player ship stays nose-up. The world turns around it. Each command has its own hull.
+        await JS.InvokeVoidAsync("gameInterop.drawShip", cx, cy, -Math.PI / 2, PlayerRadius, PlayerColor, shieldsOn, false, ShipDesign);
     }
 
     private void GenerateStars()

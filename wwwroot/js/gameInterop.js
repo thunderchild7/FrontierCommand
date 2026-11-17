@@ -65,19 +65,19 @@ window.gameInterop = {
     },
 
     // angle 0 points right. Negative half-pi points up, which is the player's fixed nose.
-    drawShip: function (x, y, angle, radius, color, shielded, outlineOnly) {
+    // design 0 wedge, 1 dart, 2 cruiser, 3 fork, 4 ram. Enemies stay on 0.
+    drawShip: function (x, y, angle, radius, color, shielded, outlineOnly, design) {
         if (!this.ctx) return;
         const ctx = this.ctx;
-        const nose = radius;
-        const wing = radius * 0.62;
-        const back = radius * 0.78;
-        const notch = radius * 0.22;
-        const local = [
-            [nose, 0],
-            [-back, wing],
-            [-notch, 0],
-            [-back, -wing]
+        const r = radius;
+        const hulls = [
+            [[r, 0], [-r * 0.78, r * 0.62], [-r * 0.22, 0], [-r * 0.78, -r * 0.62]],
+            [[r * 1.4, 0], [r * 0.05, r * 0.2], [-r * 0.9, r * 0.16], [-r * 0.4, 0], [-r * 0.9, -r * 0.16], [r * 0.05, -r * 0.2]],
+            [[r * 0.9, 0], [r * 0.15, r * 0.95], [-r * 0.7, r * 0.7], [-r * 0.4, 0], [-r * 0.7, -r * 0.7], [r * 0.15, -r * 0.95]],
+            [[r * 1.05, r * 0.34], [r * 0.25, 0], [r * 1.05, -r * 0.34], [-r * 0.15, -r * 0.62], [-r * 0.85, -r * 0.28], [-r * 0.4, 0], [-r * 0.85, r * 0.28], [-r * 0.15, r * 0.62]],
+            [[r * 0.8, 0], [r * 0.32, r * 0.7], [-r * 0.5, r * 0.7], [-r * 0.95, 0], [-r * 0.5, -r * 0.7], [r * 0.32, -r * 0.7]]
         ];
+        const local = hulls[(design | 0) % hulls.length];
         const cos = Math.cos(angle);
         const sin = Math.sin(angle);
         const point = (lx, ly) => [x + lx * cos - ly * sin, y + lx * sin + ly * cos];
@@ -101,9 +101,11 @@ window.gameInterop = {
             ctx.stroke();
         }
 
-        const [ex, ey] = point(-back - radius * 0.18, 0);
+        let tail = local[0][0];
+        for (const [lx] of local) if (lx < tail) tail = lx;
+        const [ex, ey] = point(tail - r * 0.16, 0);
         ctx.beginPath();
-        ctx.arc(ex, ey, Math.max(1.5, radius * 0.16), 0, Math.PI * 2);
+        ctx.arc(ex, ey, Math.max(1.5, r * 0.16), 0, Math.PI * 2);
         ctx.fillStyle = outlineOnly ? '#665522' : '#ffaa22';
         ctx.fill();
 
@@ -114,6 +116,33 @@ window.gameInterop = {
             ctx.lineWidth = 2;
             ctx.stroke();
         }
+    },
+
+    // Small pod. angle 0 points right, the same convention as drawShip.
+    drawCapsule: function (x, y, angle) {
+        if (!this.ctx) return;
+        const ctx = this.ctx;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        const point = (lx, ly) => [x + lx * cos - ly * sin, y + lx * sin + ly * cos];
+        const local = [[7, 0], [4, 3.2], [-5.5, 3.2], [-7, 0], [-5.5, -3.2], [4, -3.2]];
+        ctx.beginPath();
+        local.forEach(([lx, ly], i) => {
+            const [px, py] = point(lx, ly);
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+        });
+        ctx.closePath();
+        ctx.fillStyle = '#ffe08a';
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = '#fff4c8';
+        ctx.stroke();
+        const [wx, wy] = point(2.2, 0);
+        ctx.beginPath();
+        ctx.arc(wx, wy, 1.4, 0, Math.PI * 2);
+        ctx.fillStyle = '#7ee0ff';
+        ctx.fill();
     },
 
     drawLine: function (x1, y1, x2, y2, color, width = 1) {

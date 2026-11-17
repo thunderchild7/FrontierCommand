@@ -8,7 +8,7 @@ Spiritual successor to Acornsoft's *Starship Command* (1983).
 - Shields toggle (S key)
 - Limited-range torpedoes (Space)
 - Small and large enemies (some cloaked)
-- Escape capsule (C or Escape) to end command and potentially promote
+- Port and starboard escape capsules (F and G). The pod must clear the playfield, then Star Fleet rates the score and may promote you to a new ship
 - Scoring and progressive commands
 
 ## Controls
@@ -18,7 +18,8 @@ Spiritual successor to Acornsoft's *Starship Command* (1983).
 - **Arrow Down**: Brake
 - **Space**: Fire torpedoes
 - **S**: Toggle shields
-- **C / Escape**: Launch escape capsule
+- **F**: Launch the port escape capsule
+- **G**: Launch the starboard escape capsule
 - **R**: Restart
 
 ## Run the PWA

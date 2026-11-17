@@ -1,0 +1,345 @@
+@page "/"
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+@implements IDisposable
+
+<PageTitle>Frontier Command</PageTitle>
+
+<div class="game-container">
+    <canvas id="gameCanvas" @ref="canvasRef" width="800" height="600"></canvas>
+    <div class="hud">
+        <div class="energy">Energy: @energy.ToString("0") / 100</div>
+        <div class="score">Score: @score | Command: @command</div>
+        <div class="status">@statusMessage</div>
+        <div class="controls-hint">
+            Arrows/WASD: Rotate/Thrust | Space: Fire | S: Shields | Esc: Capsule
+        </div>
+    </div>
+</div>
+
+@code {
+    private ElementReference canvasRef;
+    private DotNetObjectReference<Home>? objRef;
+    private bool isRunning = true;
+
+    // Game state
+    private double energy = 100;
+    private int score = 0;
+    private int command = 1;
+    private string statusMessage = "Scanning frontier...";
+    private bool shieldsOn = false;
+    private bool autoShields = true;
+    private double playerRotation = 0; // radians
+    private double worldVx = 0;
+    private double worldVy = 0;
+    private List<Enemy> enemies = new();
+    private List<Projectile> projectiles = new();
+    private List<Star> stars = new();
+    private Random rng = new();
+    private double lastTimestamp = 0;
+    private bool keysDown = false; // simplified input
+
+    // Input state (updated via keyboard events - we'll add JS listener)
+    private HashSet<string> pressedKeys = new();
+
+    [JSInvokable]
+    public void OnKeyDown(string key)
+    {
+        pressedKeys.Add(key.ToLower());
+        HandleKey(key.ToLower(), true);
+    }
+
+    [JSInvokable]
+    public void OnKeyUp(string key)
+    {
+        pressedKeys.Remove(key.ToLower());
+    }
+
+    private void HandleKey(string key, bool down)
+    {
+        if (!down) return;
+        switch (key)
+        {
+            case " ":
+            case "spacebar":
+                if (energy > 5)
+                {
+                    energy -= 5;
+                    double speed = 300;
+                    projectiles.Add(new Projectile
+                    {
+                        X = Math.Cos(playerRotation) * 20,
+                        Y = Math.Sin(playerRotation) * 20,
+                        Vx = Math.Cos(playerRotation) * speed,
+                        Vy = Math.Sin(playerRotation) * speed
+                    });
+                }
+                break;
+            case "s":
+                shieldsOn = !shieldsOn;
+                statusMessage = shieldsOn ? "Shields UP" : "Shields DOWN";
+                break;
+            case "escape":
+            case "c":
+                statusMessage = "Escape capsule launched! Score evaluated...";
+                isRunning = false;
+                // Simple promotion
+                if (score > 40 + command * 10)
+                {
+                    command++;
+                    score = 0;
+                    energy = 100;
+                    enemies.Clear();
+                    projectiles.Clear();
+                    SpawnInitialEnemies();
+                    statusMessage = $"Promoted to Command {command}! New ship.";
+                    isRunning = true;
+                }
+                else
+                {
+                    statusMessage = "Starfleet disappointed. Mission failed.";
+                }
+                break;
+            case "r":
+                Restart();
+                break;
+        }
+    }
+
+    private void Restart()
+    {
+        energy = 100;
+        score = 0;
+        command = 1;
+        enemies.Clear();
+        projectiles.Clear();
+        worldVx = worldVy = 0;
+        playerRotation = 0;
+        isRunning = true;
+        SpawnInitialEnemies();
+        statusMessage = "New command. Good luck.";
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            objRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("gameInterop.init", "gameCanvas", objRef);
+            GenerateStars();
+            SpawnInitialEnemies();
+        }
+    }
+
+    [JSInvokable]
+    public async Task GameLoop(double timestamp)
+    {
+        if (!isRunning) return;
+        double dt = lastTimestamp == 0 ? 0.016 : Math.Min((timestamp - lastTimestamp) / 1000.0, 0.05);
+        lastTimestamp = timestamp;
+
+        Update(dt);
+        await Render();
+    }
+
+    private void Update(double dt)
+    {
+        // Continuous controls
+        double rotSpeed = 2.5;
+        double thrust = 120;
+        if (pressedKeys.Contains("arrowleft") || pressedKeys.Contains("a"))
+            playerRotation -= rotSpeed * dt;
+        if (pressedKeys.Contains("arrowright") || pressedKeys.Contains("d"))
+            playerRotation += rotSpeed * dt;
+        if (pressedKeys.Contains("arrowup") || pressedKeys.Contains("w"))
+        {
+            worldVx -= Math.Cos(playerRotation) * thrust * dt;
+            worldVy -= Math.Sin(playerRotation) * thrust * dt;
+            energy = Math.Max(0, energy - 8 * dt);
+        }
+        if (pressedKeys.Contains("arrowdown"))
+        {
+            // brake
+            worldVx *= (1 - 2.0 * dt);
+            worldVy *= (1 - 2.0 * dt);
+            energy = Math.Max(0, energy - 3 * dt);
+        }
+
+        // Dampen a little
+        worldVx *= (1 - 0.3 * dt);
+        worldVy *= (1 - 0.3 * dt);
+
+        // Energy regen
+        double regen = shieldsOn ? 4 : 12;
+        if (Math.Abs(worldVx) < 5 && Math.Abs(worldVy) < 5) regen *= 1.8;
+        energy = Math.Min(100, energy + regen * dt);
+
+        // Move relative
+        foreach (var e in enemies)
+        {
+            e.X += worldVx * dt;
+            e.Y += worldVy * dt;
+            e.Update(dt, rng);
+        }
+
+        foreach (var p in projectiles)
+        {
+            p.X += (p.Vx + worldVx) * dt;
+            p.Y += (p.Vy + worldVy) * dt;
+            p.Life -= dt;
+        }
+        projectiles.RemoveAll(p => p.Life <= 0 || Distance(p.X, p.Y) > 800);
+
+        // Collisions
+        foreach (var e in enemies.ToList())
+        {
+            double dist = Distance(e.X, e.Y);
+            if (dist < e.Radius + 14)
+            {
+                energy -= shieldsOn ? 8 : 25;
+                enemies.Remove(e);
+                statusMessage = shieldsOn ? "Shield absorbed impact" : "Hull hit!";
+            }
+            foreach (var p in projectiles.ToList())
+            {
+                if (Math.Sqrt((e.X - p.X)*(e.X - p.X) + (e.Y - p.Y)*(e.Y - p.Y)) < e.Radius + 5)
+                {
+                    e.Health -= 30;
+                    projectiles.Remove(p);
+                    if (e.Health <= 0)
+                    {
+                        score += e.IsLarge ? 12 : 8;
+                        enemies.Remove(e);
+                        statusMessage = $"Kill! +{(e.IsLarge ? 12 : 8)}";
+                    }
+                }
+            }
+        }
+
+        if (enemies.Count < 2 + command && rng.NextDouble() < dt * 0.8)
+            SpawnEnemy();
+
+        if (energy <= 0)
+        {
+            statusMessage = "ENERGY DEPLETED - Ship lost. Press R to restart.";
+            isRunning = false;
+        }
+    }
+
+    private async Task Render()
+    {
+        await JS.InvokeVoidAsync("gameInterop.clear");
+        var size = await JS.InvokeAsync<Size>("gameInterop.getSize");
+        double cx = size.Width / 2;
+        double cy = size.Height / 2;
+
+        // Stars (relative)
+        foreach (var s in stars)
+        {
+            double sx = (s.X + worldVx * 0.1) % size.Width;
+            double sy = (s.Y + worldVy * 0.1) % size.Height;
+            if (sx < 0) sx += size.Width;
+            if (sy < 0) sy += size.Height;
+            await JS.InvokeVoidAsync("gameInterop.drawCircle", sx, sy, 1, "#ffffff");
+        }
+
+        // Enemies
+        foreach (var e in enemies)
+        {
+            double ex = cx + e.X * Math.Cos(playerRotation) - e.Y * Math.Sin(playerRotation);
+            double ey = cy + e.X * Math.Sin(playerRotation) + e.Y * Math.Cos(playerRotation);
+            string color = e.IsLarge ? "#ff4444" : "#ffaa44";
+            if (e.Cloaked) color = "#444444";
+            await JS.InvokeVoidAsync("gameInterop.drawCircle", ex, ey, e.Radius, color);
+        }
+
+        // Projectiles
+        foreach (var p in projectiles)
+        {
+            double px = cx + p.X * Math.Cos(playerRotation) - p.Y * Math.Sin(playerRotation);
+            double py = cy + p.X * Math.Sin(playerRotation) + p.Y * Math.Cos(playerRotation);
+            await JS.InvokeVoidAsync("gameInterop.drawCircle", px, py, 3, "#00ffff");
+        }
+
+        // Player ship (fixed center, simple triangle)
+        await JS.InvokeVoidAsync("gameInterop.drawCircle", cx, cy, 12, shieldsOn ? "#4488ff" : "#ffffff");
+        // Direction indicator
+        double tipX = cx + Math.Cos(playerRotation) * 20;
+        double tipY = cy + Math.Sin(playerRotation) * 20;
+        await JS.InvokeVoidAsync("gameInterop.drawLine", cx, cy, tipX, tipY, "#00ff00", 2);
+
+        // HUD text on canvas
+        await JS.InvokeVoidAsync("gameInterop.drawText", $"ENERGY {energy:0}", 10, 30, "#00ff00", 18);
+        await JS.InvokeVoidAsync("gameInterop.drawText", $"SCORE {score}  CMD {command}", 10, 55, "#ffffff", 16);
+        await JS.InvokeVoidAsync("gameInterop.drawText", statusMessage, 10, size.Height - 20, "#ffff00", 14);
+    }
+
+    private void GenerateStars()
+    {
+        for (int i = 0; i < 100; i++)
+        {
+            stars.Add(new Star { X = rng.Next(0, 2000) - 1000, Y = rng.Next(0, 2000) - 1000 });
+        }
+    }
+
+    private void SpawnInitialEnemies()
+    {
+        for (int i = 0; i < 4; i++) SpawnEnemy();
+    }
+
+    private void SpawnEnemy()
+    {
+        double angle = rng.NextDouble() * Math.PI * 2;
+        double dist = 400 + rng.NextDouble() * 200;
+        bool large = rng.NextDouble() < 0.3;
+        enemies.Add(new Enemy
+        {
+            X = Math.Cos(angle) * dist,
+            Y = Math.Sin(angle) * dist,
+            IsLarge = large,
+            Radius = large ? 18 : 10,
+            Health = large ? 60 : 30,
+            Cloaked = large && rng.NextDouble() < 0.5
+        });
+    }
+
+    private double Distance(double x, double y) => Math.Sqrt(x * x + y * y);
+
+    // Simple key handling placeholder - full version would use JS events
+    public void Dispose()
+    {
+        objRef?.Dispose();
+        JS.InvokeVoidAsync("gameInterop.stopLoop");
+    }
+
+    private class Enemy
+    {
+        public double X, Y;
+        public double Radius;
+        public int Health;
+        public bool IsLarge;
+        public bool Cloaked;
+        public void Update(double dt, Random r)
+        {
+            // Simple AI: drift toward center a bit
+            double d = Math.Sqrt(X * X + Y * Y);
+            if (d > 50)
+            {
+                X -= (X / d) * 40 * dt;
+                Y -= (Y / d) * 40 * dt;
+            }
+        }
+    }
+
+    private class Projectile
+    {
+        public double X, Y, Vx, Vy, Life = 2.0;
+    }
+
+    private class Star { public double X, Y; }
+    private class Size 
+    { 
+        public double Width { get; set; } 
+        public double Height { get; set; } 
+    }
+}

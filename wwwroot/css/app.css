@@ -1,9 +1,15 @@
 .game-container {
     position: relative;
     width: 100%;
-    height: 100vh;
+    height: calc(100vh - 7rem);
     background: #000;
     overflow: hidden;
+}
+
+@media (min-width: 641px) {
+    .game-container {
+        height: calc(100vh - 3.5rem);
+    }
 }
 
 #gameCanvas {
@@ -15,18 +21,41 @@
 
 .hud {
     position: absolute;
-    top: 10px;
-    left: 10px;
-    color: #0f0;
-    font-family: monospace;
+    inset: 0;
     pointer-events: none;
+    font-family: monospace;
     text-shadow: 0 0 4px #000;
+}
+
+.hud-readout {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    line-height: 1.3;
+}
+
+.hud-readout .energy {
+    color: #0f0;
+}
+
+.hud-readout .score {
+    color: #fff;
+}
+
+.hud-readout .status {
+    color: #ff0;
 }
 
 .controls-hint {
     position: absolute;
-    bottom: 10px;
-    left: 10px;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
     font-size: 12px;
+    line-height: 1.3;
     color: #aaa;
 }

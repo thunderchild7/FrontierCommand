@@ -6,11 +6,13 @@
 <PageTitle>Frontier Command</PageTitle>
 
 <div class="game-container">
-    <canvas id="gameCanvas" @ref="canvasRef" width="800" height="600"></canvas>
+    <canvas id="gameCanvas" @ref="canvasRef"></canvas>
     <div class="hud">
-        <div class="energy">Energy: @energy.ToString("0") / 100</div>
-        <div class="score">Score: @score | Command: @command</div>
-        <div class="status">@statusMessage</div>
+        <div class="hud-readout">
+            <div class="energy">Energy: @energy.ToString("0") / 100</div>
+            <div class="score">Score: @score | Command: @command</div>
+            <div class="status">@statusMessage</div>
+        </div>
         <div class="controls-hint">
             Arrows/WASD: Rotate/Thrust | Space: Fire | S: Shields | Esc: Capsule
         </div>
@@ -37,6 +39,7 @@
     private List<Star> stars = new();
     private Random rng = new();
     private double lastTimestamp = 0;
+    private bool disposed;
     private bool keysDown = false; // simplified input
 
     // Input state (updated via keyboard events - we'll add JS listener)
@@ -47,6 +50,7 @@
     {
         pressedKeys.Add(key.ToLower());
         HandleKey(key.ToLower(), true);
+        RefreshHud();
     }
 
     [JSInvokable]
@@ -140,6 +144,7 @@
 
         Update(dt);
         await Render();
+        RefreshHud();
     }
 
     private void Update(double dt)
@@ -267,11 +272,6 @@
         double tipX = cx + Math.Cos(playerRotation) * 20;
         double tipY = cy + Math.Sin(playerRotation) * 20;
         await JS.InvokeVoidAsync("gameInterop.drawLine", cx, cy, tipX, tipY, "#00ff00", 2);
-
-        // HUD text on canvas
-        await JS.InvokeVoidAsync("gameInterop.drawText", $"ENERGY {energy:0}", 10, 30, "#00ff00", 18);
-        await JS.InvokeVoidAsync("gameInterop.drawText", $"SCORE {score}  CMD {command}", 10, 55, "#ffffff", 16);
-        await JS.InvokeVoidAsync("gameInterop.drawText", statusMessage, 10, size.Height - 20, "#ffff00", 14);
     }
 
     private void GenerateStars()
@@ -308,8 +308,15 @@
     // Simple key handling placeholder - full version would use JS events
     public void Dispose()
     {
+        disposed = true;
         objRef?.Dispose();
         JS.InvokeVoidAsync("gameInterop.stopLoop");
+    }
+
+    private void RefreshHud()
+    {
+        if (!disposed)
+            StateHasChanged();
     }
 
     private class Enemy

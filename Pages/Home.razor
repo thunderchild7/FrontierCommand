@@ -200,7 +200,7 @@
         {
             worldVx -= Math.Cos(playerRotation) * thrust * dt;
             worldVy -= Math.Sin(playerRotation) * thrust * dt;
-            energy = Math.Max(0, energy - 8 * dt);
+            energy = Math.Max(0, energy - 4 * dt);
         }
         if (pressedKeys.Contains("arrowdown"))
         {
@@ -215,7 +215,7 @@
         worldVy *= (1 - 0.3 * dt);
 
         // Energy regen
-        double regen = shieldsOn ? 4 : 12;
+        double regen = shieldsOn ? 8 : 16;
         if (Math.Abs(worldVx) < 5 && Math.Abs(worldVy) < 5) regen *= 1.8;
         energy = Math.Min(100, energy + regen * dt);
 
@@ -253,7 +253,7 @@
             double dist = Distance(e.X, e.Y);
             if (dist < e.Radius + 14)
             {
-                energy -= shieldsOn ? 8 : 25;
+                energy -= shieldsOn ? 4 : 12;
                 enemies.Remove(e);
                 statusMessage = shieldsOn ? "Shield absorbed impact" : "Hull hit!";
             }
@@ -274,7 +274,7 @@
             }
         }
 
-        if (enemies.Count < 2 + command && rng.NextDouble() < dt * 0.8)
+        if (enemies.Count < 1 + command && rng.NextDouble() < dt * 0.35)
             SpawnEnemy();
 
         if (energy <= 0)
@@ -344,14 +344,14 @@
 
     private void SpawnInitialEnemies()
     {
-        for (int i = 0; i < 4; i++) SpawnEnemy();
+        for (int i = 0; i < 2; i++) SpawnEnemy();
     }
 
     private void SpawnEnemy()
     {
         double angle = rng.NextDouble() * Math.PI * 2;
-        double dist = 400 + rng.NextDouble() * 200;
-        bool large = rng.NextDouble() < 0.3;
+        double dist = 520 + rng.NextDouble() * 260;
+        bool large = rng.NextDouble() < 0.18;
         enemies.Add(new Enemy
         {
             X = Math.Cos(angle) * dist,
@@ -360,7 +360,7 @@
             Radius = large ? 18 : 10,
             Health = large ? 60 : 30,
             Cloaked = large && rng.NextDouble() < 0.5,
-            FireCooldown = 0.5 + rng.NextDouble() * 1.2
+            FireCooldown = 1.6 + rng.NextDouble() * 2.0
         });
     }
 
@@ -370,9 +370,10 @@
         double dist = Distance(e.X, e.Y);
         if (e.FireCooldown > 0 || dist < 80 || dist > 760) return;
 
-        double aimX = -e.X / dist;
-        double aimY = -e.Y / dist;
-        double speed = e.IsLarge ? 160 : 200;
+        double aim = Math.Atan2(-e.Y, -e.X) + (rng.NextDouble() - 0.5) * 0.28;
+        double aimX = Math.Cos(aim);
+        double aimY = Math.Sin(aim);
+        double speed = e.IsLarge ? 90 : 110;
         double nose = e.Radius + 10;
         projectiles.Add(new Projectile
         {
@@ -381,10 +382,10 @@
             Vx = aimX * speed,
             Vy = aimY * speed,
             Hostile = true,
-            Damage = e.IsLarge ? 16 : 10,
-            Life = 4
+            Damage = e.IsLarge ? 8 : 5,
+            Life = 5
         });
-        e.FireCooldown = e.IsLarge ? 1.4 : 2.1;
+        e.FireCooldown = e.IsLarge ? 2.6 : 3.6;
     }
 
     private double Distance(double x, double y) => Math.Sqrt(x * x + y * y);
@@ -449,8 +450,8 @@
             double d = Math.Sqrt(X * X + Y * Y);
             if (d > 50)
             {
-                X -= (X / d) * 40 * dt;
-                Y -= (Y / d) * 40 * dt;
+                X -= (X / d) * 22 * dt;
+                Y -= (Y / d) * 22 * dt;
             }
         }
     }

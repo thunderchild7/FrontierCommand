@@ -4,8 +4,8 @@ Spiritual successor to Acornsoft's *Starship Command* (1983).
 
 ## Features
 - Player ship locked at screen center; world rotates and translates around you
-- Energy management (actions drain energy, regenerates faster when idle/shields down)
-- Shields toggle (S key)
+- Energy management. Thrust, braking, torpedoes, shields, and damage draw from four recharging banks. Very low energy shuts off shields and scanners until the banks recover
+- Shields and the long-range scanner are mutually exclusive. S toggles them manually. Q lets the ship switch automatically when a contact gets close
 - Limited-range torpedoes (Space)
 - Small and large enemies (some cloaked)
 - Port and starboard escape capsules (F and G). The pod must clear the playfield, then Star Fleet rates the score and may promote you to a new ship
@@ -17,7 +17,8 @@ Spiritual successor to Acornsoft's *Starship Command* (1983).
 - **Arrow Up / W**: Thrust
 - **Arrow Down**: Brake
 - **Space**: Fire torpedoes
-- **S**: Toggle shields
+- **S**: Toggle shields and scanners (leaves AUTO)
+- **Q**: Toggle automatic shields
 - **F**: Launch the port escape capsule
 - **G**: Launch the starboard escape capsule
 - **R**: Restart

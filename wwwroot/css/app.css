@@ -217,6 +217,10 @@
     color: #8ecbff;
 }
 
+.instrument-readout .shield-state.offline {
+    color: #e24b37;
+}
+
 .instrument-readout .status {
     color: #ff0;
 }

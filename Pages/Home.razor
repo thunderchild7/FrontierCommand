@@ -10,19 +10,15 @@
         <canvas id="gameCanvas" @ref="canvasRef"></canvas>
         <div class="hud">
             <div class="controls-hint">
-                Arrows/WASD: Rotate/Thrust | Space: Fire | S: Shields | F: Port capsule | G: Starboard capsule
+                Arrows/WASD: Rotate/Thrust | Space: Fire | S: Shields | Q: Auto | F: Port capsule | G: Starboard capsule
             </div>
         </div>
     </div>
     <aside class="instruments">
         <div class="instrument">
             <div class="instrument-label">Long range</div>
-            <div class="scanner-plot @(shieldsOn ? "offline" : "")">
-                @if (shieldsOn)
-                {
-                    <div class="scanner-static">Scan off</div>
-                }
-                else
+            <div class="scanner-plot @(ScannerLive ? "" : "offline")">
+                @if (ScannerLive)
                 {
                     @foreach (var e in enemies.ToArray())
                     {
@@ -37,8 +33,12 @@
                     {
                         <span class="blip capsule" style="@BlipStyle(capsuleX, capsuleY)"></span>
                     }
+                    <span class="scanner-own" style="@OwnShipStyle"></span>
                 }
-                <span class="scanner-own" style="@OwnShipStyle"></span>
+                else
+                {
+                    <div class="scanner-static">@(systemsOffline ? "Power low" : "Scan off")</div>
+                }
             </div>
         </div>
         <div class="instrument">
@@ -56,7 +56,7 @@
         </div>
         <div class="instrument-readout">
             <div class="score">Score @score · Cmd @command · @ShipName</div>
-            <div class="shield-state">@(shieldsOn ? "Shields up" : "Shields down")</div>
+            <div class="shield-state @(systemsOffline ? "offline" : "")">@ShieldReadout</div>
             <div class="status">@statusMessage</div>
         </div>
     </aside>
@@ -74,6 +74,9 @@
     private string statusMessage = "Scanning frontier...";
     private bool shieldsOn = false;
     private bool autoShields = true;
+    private bool systemsOffline = false;
+    private double systemsLockout = 0;
+    private double shieldDropTimer = 0;
     private double playerRotation = 0; // radians
     private double worldVx = 0;
     private double worldVy = 0;
@@ -124,7 +127,7 @@
             case "spacebar":
                 if (!capsuleInFlight && isRunning && energy > 5)
                 {
-                    energy -= 5;
+                    energy = Math.Max(0, energy - 5);
                     double speed = 300;
                     projectiles.Add(new Projectile
                     {
@@ -138,9 +141,18 @@
                 break;
             case "s":
                 if (!isRunning) break;
+                autoShields = false;
                 shieldsOn = !shieldsOn;
+                shieldDropTimer = 0;
                 if (!capsuleInFlight)
-                    statusMessage = shieldsOn ? "Shields UP" : "Shields DOWN";
+                    statusMessage = ShieldToggleMessage();
+                break;
+            case "q":
+                if (!isRunning) break;
+                autoShields = !autoShields;
+                shieldDropTimer = 0;
+                if (!capsuleInFlight)
+                    statusMessage = autoShields ? "Shields AUTO" : "Manual shield control.";
                 break;
             case "f":
                 LaunchCapsule(-1);
@@ -166,6 +178,10 @@
         capsuleInFlight = false;
         isRunning = true;
         shieldsOn = false;
+        autoShields = true;
+        systemsOffline = false;
+        systemsLockout = 0;
+        shieldDropTimer = 0;
         SpawnInitialEnemies();
         statusMessage = "New command. Good luck.";
     }
@@ -222,6 +238,7 @@
 
     private void Update(double dt)
     {
+        TickSystems(dt);
         if (!capsuleInFlight)
             PilotShip(dt);
         else
@@ -246,6 +263,9 @@
         }
         projectiles.RemoveAll(p => p.Life <= 0 || Distance(p.X, p.Y) > 800);
 
+        UpdateAutoShields(dt);
+        UpdateSystems();
+
         if (!capsuleInFlight)
         {
             foreach (var p in projectiles.ToList())
@@ -253,9 +273,8 @@
                 if (!p.Hostile) continue;
                 if (Distance(p.X, p.Y) < 18)
                 {
-                    energy = Math.Max(0, energy - (shieldsOn ? p.Damage * 0.35 : p.Damage));
+                    AbsorbHit(p.Damage * 0.35, p.Damage, "Shield absorbed torpedo", "Torpedo hit!");
                     projectiles.Remove(p);
-                    statusMessage = shieldsOn ? "Shield absorbed torpedo" : "Torpedo hit!";
                 }
             }
         }
@@ -264,9 +283,8 @@
         {
             if (!capsuleInFlight && Distance(e.X, e.Y) < e.Radius + PlayerRadius)
             {
-                energy -= shieldsOn ? 4 : 12;
+                AbsorbHit(4, 12, "Shield absorbed impact", "Hull hit!");
                 enemies.Remove(e);
-                statusMessage = shieldsOn ? "Shield absorbed impact" : "Hull hit!";
                 continue;
             }
             foreach (var p in projectiles.ToList())
@@ -296,6 +314,8 @@
             SpawnEnemy();
         }
 
+        UpdateSystems();
+
         if (!capsuleInFlight && energy <= 0)
         {
             statusMessage = "ENERGY DEPLETED - Ship lost. Press R to restart.";
@@ -303,6 +323,7 @@
         }
     }
 
+    // Shield upkeep is higher than recharge, so leaving them up empties the banks.
     private void PilotShip(double dt)
     {
         double rotSpeed = 2.5;
@@ -327,9 +348,10 @@
         worldVx *= (1 - 0.3 * dt);
         worldVy *= (1 - 0.3 * dt);
 
-        double regen = shieldsOn ? 8 : 16;
-        if (Math.Abs(worldVx) < 5 && Math.Abs(worldVy) < 5) regen *= 1.8;
-        energy = Math.Min(100, energy + regen * dt);
+        bool idle = Math.Abs(worldVx) < 5 && Math.Abs(worldVy) < 5;
+        double regen = idle ? 28.8 : 16;
+        double shieldDraw = ShieldsLive ? ShieldUpkeepPerSecond : 0;
+        energy = Math.Clamp(energy + (regen - shieldDraw) * dt, 0, 100);
     }
 
     private void UpdateCapsule(double dt)
@@ -396,6 +418,9 @@
             score = 0;
             energy = 100;
             shieldsOn = false;
+            systemsOffline = false;
+            systemsLockout = 0;
+            shieldDropTimer = 0;
             worldVx = 0;
             worldVy = 0;
             enemies.Clear();
@@ -480,7 +505,7 @@
         }
 
         // Player ship stays nose-up. The world turns around it. Each command has its own hull.
-        await JS.InvokeVoidAsync("gameInterop.drawShip", cx, cy, -Math.PI / 2, PlayerRadius, PlayerColor, shieldsOn, false, ShipDesign);
+        await JS.InvokeVoidAsync("gameInterop.drawShip", cx, cy, -Math.PI / 2, PlayerRadius, PlayerColor, ShieldsLive, false, ShipDesign);
     }
 
     private void GenerateStars()
@@ -554,6 +579,110 @@
     }
 
     private const double ScannerRange = 1000;
+    private const double EnergyBlackout = 20;
+    private const double EnergyRestore = 45;
+    private const double SystemsLockoutTime = 2;
+    private const double ShieldUpkeepPerSecond = 36;
+    private const double AutoThreatRange = 260;
+    private const double AutoTorpedoRange = 220;
+    private const double AutoPanicRange = 110;
+    private const double AutoPanicShotRange = 150;
+    private const double AutoShieldHold = 0.85;
+
+    // Shields and the scanner share one circuit. A nearly empty bank opens that circuit until recharge.
+    private bool ShieldsLive => shieldsOn && !systemsOffline;
+    private bool ScannerLive => !shieldsOn && !systemsOffline;
+
+    private string ShieldReadout
+    {
+        get
+        {
+            if (systemsOffline) return "Systems offline";
+            if (autoShields) return ShieldsLive ? "AUTO · Shields up" : "AUTO · Scanning";
+            return ShieldsLive ? "Shields up" : "Scanning";
+        }
+    }
+
+    private string ShieldToggleMessage()
+    {
+        if (systemsOffline)
+            return shieldsOn
+                ? "Insufficient energy. Shields stay offline."
+                : "Scanners stay offline until energy recovers.";
+        return shieldsOn ? "Shields UP" : "Shields DOWN";
+    }
+
+    private void AbsorbHit(double shieldedCost, double hullCost, string shieldedText, string hullText)
+    {
+        if (ShieldsLive)
+        {
+            energy = Math.Max(0, energy - shieldedCost);
+            statusMessage = shieldedText;
+            return;
+        }
+
+        energy = Math.Max(0, energy - hullCost);
+        statusMessage = hullText;
+    }
+
+    private void TickSystems(double dt)
+    {
+        if (systemsOffline)
+            systemsLockout = Math.Max(0, systemsLockout - dt);
+        UpdateSystems();
+    }
+
+    private void UpdateSystems()
+    {
+        bool wasOffline = systemsOffline;
+        if (!systemsOffline && energy < EnergyBlackout)
+        {
+            systemsOffline = true;
+            systemsLockout = SystemsLockoutTime;
+        }
+        else if (systemsOffline && systemsLockout <= 0 && energy >= EnergyRestore)
+        {
+            systemsOffline = false;
+        }
+
+        if (systemsOffline == wasOffline || capsuleInFlight) return;
+        statusMessage = systemsOffline
+            ? "Energy critical. Shields and scanners offline."
+            : "Systems restored.";
+    }
+
+    private void UpdateAutoShields(double dt)
+    {
+        if (!autoShields || systemsOffline) return;
+
+        bool panic = enemies.Exists(e => Distance(e.X, e.Y) < AutoPanicRange)
+            || projectiles.Exists(p => p.Hostile && Distance(p.X, p.Y) < AutoPanicShotRange);
+        bool threat = panic
+            || enemies.Exists(e => Distance(e.X, e.Y) < AutoThreatRange)
+            || projectiles.Exists(p => p.Hostile && Distance(p.X, p.Y) < AutoTorpedoRange);
+        bool allowShields = panic || energy >= EnergyRestore;
+
+        if (threat && allowShields)
+        {
+            shieldDropTimer = AutoShieldHold;
+            if (!shieldsOn)
+            {
+                shieldsOn = true;
+                if (!capsuleInFlight)
+                    statusMessage = "AUTO shields up";
+            }
+            return;
+        }
+
+        if (!shieldsOn) return;
+        if (!allowShields)
+            shieldDropTimer = 0;
+        shieldDropTimer -= dt;
+        if (shieldDropTimer > 0) return;
+        shieldsOn = false;
+        if (!capsuleInFlight)
+            statusMessage = "AUTO scanning";
+    }
 
     private string EnergyTone => energy < 30 ? "low" : energy < 60 ? "mid" : "high";
 

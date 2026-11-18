@@ -9,7 +9,7 @@ Spiritual successor to Acornsoft's *Starship Command* (1983).
 - Limited-range torpedoes (Space)
 - Small and large enemies (some cloaked)
 - Port and starboard escape capsules (F and G). The pod must clear the playfield, then Star Fleet rates the score and may promote you to a new ship
-- Scoring and progressive commands
+- Scoring and progressive commands. Torpedoes award 8 for a small ship and 12 for a large one. Ramming awards 2 and 3
 
 ## Controls
 - **Arrow Left / A**: Rotate left

@@ -283,7 +283,9 @@
         {
             if (!capsuleInFlight && Distance(e.X, e.Y) < e.Radius + PlayerRadius)
             {
-                AbsorbHit(4, 12, "Shield absorbed impact", "Hull hit!");
+                int points = CombatPoints(e.IsLarge, rammed: true);
+                score += points;
+                AbsorbHit(4, 12, $"Shield absorbed impact. +{points}", $"Hull hit! +{points}");
                 enemies.Remove(e);
                 continue;
             }
@@ -296,9 +298,10 @@
                     projectiles.Remove(p);
                     if (e.Health <= 0)
                     {
-                        score += e.IsLarge ? 12 : 8;
+                        int points = CombatPoints(e.IsLarge, rammed: false);
+                        score += points;
                         enemies.Remove(e);
-                        statusMessage = $"Kill! +{(e.IsLarge ? 12 : 8)}";
+                        statusMessage = $"Kill! +{points}";
                     }
                 }
             }
@@ -610,6 +613,13 @@
                 ? "Insufficient energy. Shields stay offline."
                 : "Scanners stay offline until energy recovers.";
         return shieldsOn ? "Shields UP" : "Shields DOWN";
+    }
+
+    // Acornsoft manual: small 8/2 and large 12/3, torpedo then ramming.
+    private static int CombatPoints(bool large, bool rammed)
+    {
+        if (large) return rammed ? 3 : 12;
+        return rammed ? 2 : 8;
     }
 
     private void AbsorbHit(double shieldedCost, double hullCost, string shieldedText, string hullText)
